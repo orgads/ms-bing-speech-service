@@ -129,7 +129,8 @@ module.exports = function (dependencies) {
 
       if (messagePath === 'speech.endDetected') {
         const microphoneMetric = this.telemetry.Metrics.filter((m) => m.Name === 'Microphone').pop();
-        microphoneMetric.End = new Date().toISOString();
+        if (microphoneMetric)
+          microphoneMetric.End = new Date().toISOString();
       };
 
       if (messagePath === 'turn.end') {

@@ -158,7 +158,7 @@ module.exports = function (dependencies) {
           var microphoneMetric = this.telemetry.Metrics.filter(function (m) {
             return m.Name === 'Microphone';
           }).pop();
-          microphoneMetric.End = new Date().toISOString();
+          if (microphoneMetric) microphoneMetric.End = new Date().toISOString();
         };
 
         if (messagePath === 'turn.end') {
