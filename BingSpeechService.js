@@ -12,16 +12,6 @@ module.exports = function (dependencies) {
   let debug;
   const globalDebugMode = (process && process.env && process.env.DEBUG);
 
-  const receivedTelemetryTemplate = {
-    'turn.start': [],
-    'speech.startDetected': [],
-    'speech.hypothesis': [],
-    'speech.endDetected': [],
-    'speech.phrase': [],
-    'speech.fragment': [],
-    'turn.end': []
-  };
-
   const richPaths = ['turn.start', 'turn.end', 'speech.phrase', 'speech.hypothesis', 'speech.fragment', 'speech.endDetected'];
 
   const defaultOptions = {
@@ -45,21 +35,25 @@ module.exports = function (dependencies) {
       this.issueTokenUrl = this.options.issueTokenUrl;
 
       this.telemetry = {
-        'Metrics': [],
-        'ReceivedMessages': receivedTelemetryTemplate
+        Metrics: []
       };
+      this._resetTelemetry();
 
       // prepare first request id for the initial turn start
       this.currentTurnGuid = uuid().replace(/-/g, '');
       Object.assign(websocket.prototype, eventEmitter.prototype);
     };
 
-    _resetTelemetry(props) {
-      const metrics = (Array.isArray(props) && props.indexOf('Metrics') > -1) ? [] : this.telemetry.Metrics;
-      const receivedMessages = (Array.isArray(props) && props.indexOf('ReceivedMessages') > -1) ? receivedTelemetryTemplate : this.telemetry.ReceivedMessages;
-
-      this.telemetry.Metrics = metrics;
-      this.telemetry.ReceivedMessages = receivedMessages;
+    _resetTelemetry() {
+      this.telemetry.ReceivedMessages = {
+        'turn.start': [],
+        'speech.startDetected': [],
+        'speech.hypothesis': [],
+        'speech.endDetected': [],
+        'speech.phrase': [],
+        'speech.fragment': [],
+        'turn.end': []
+      };
     }
 
     _sendToSocketServer(item) {
@@ -141,7 +135,7 @@ module.exports = function (dependencies) {
         this._sendToSocketServer(telemetryResponse);
 
         // clear the messages telemetry for the next turn
-        this._resetTelemetry(['ReceivedMessages']);
+        this._resetTelemetry();
 
         // rotate currentTurnGuid ready for the next turn
         this.currentTurnGuid = uuid().replace(/-/g, '');
@@ -186,6 +180,10 @@ module.exports = function (dependencies) {
         if (!this.connection || !this.connection.readyState === 1) return resolve();
         this.once('close', resolve);
         this.once('error', reject);
+        const telemetryResponse = protocolHelper.createTelemetryPacket(this.currentTurnGuid, this.telemetry);
+        this._sendToSocketServer(telemetryResponse);
+        this._resetTelemetry();
+
         debug('closing speech websocket connection');
         this.connection.close();
       });

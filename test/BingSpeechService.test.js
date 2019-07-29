@@ -94,8 +94,8 @@ test('[ms-bing-speech-service] method _resetTelemetry', function (t) {
  };
 
   recognizer.start().then(() => {
-    recognizer._resetTelemetry(['Metrics', 'ReceivedMessages']);
-    t.deepEqual(recognizer.telemetry, resetTelemetryData, 'all data resets');
+    recognizer._resetTelemetry();
+    t.deepEqual(recognizer.telemetry.ReceivedMessages, resetTelemetryData.ReceivedMessages, 'all data resets');
   }).catch(console.error);
 });
 
