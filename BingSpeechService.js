@@ -26,7 +26,7 @@ module.exports = function (dependencies) {
 
   const defaultOptions = {
     format: 'simple',
-    language:'en-US',
+    language: 'en-US',
     mode: 'conversation',
     issueTokenUrl: 'https://api.cognitive.microsoft.com/sts/v1.0/issueToken',
     accessToken: null
@@ -36,7 +36,7 @@ module.exports = function (dependencies) {
     constructor(options) {
       super();
       this.options = Object.assign({}, defaultOptions, options);
-      debug = (this.options.debug || globalDebugMode) ? dependencies.debug : function(){};
+      debug = (this.options.debug || globalDebugMode) ? dependencies.debug : function () {};
 
       const bingServiceUrl = `wss://speech.platform.bing.com/speech/recognition/${this.options.mode}/cognitiveservices/v1?language=${this.options.language}&format=${this.options.format}`;
 
@@ -76,8 +76,8 @@ module.exports = function (dependencies) {
       return new Promise((resolve, reject) => {
         this.telemetry.Metrics.push({
           Start: new Date().toISOString(),
-          Name:'Microphone',
-          End : '',
+          Name: 'Microphone',
+          End: '',
         });
 
         inputStream.on('data', this.sendChunk.bind(this));
@@ -177,8 +177,8 @@ module.exports = function (dependencies) {
             End: ''
           });
 
-         return this._connectToWebsocket(accessToken);
-      })
+          return this._connectToWebsocket(accessToken);
+        })
     };
 
     stop() {
@@ -247,8 +247,8 @@ module.exports = function (dependencies) {
 
           this.emit('connect');
           resolve();
-       };
-     });
+        };
+      });
     };
 
   };
