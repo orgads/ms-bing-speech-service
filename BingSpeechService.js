@@ -57,6 +57,7 @@ module.exports = function (dependencies) {
     }
 
     _sendToSocketServer(item) {
+      if (!this.connection) return;
       if (this.connection.readyState !== 1) throw new Error('could not send: connection to service not open');
       this.connection.send(item);
     }
