@@ -1,6 +1,6 @@
 {
-  "name": "ms-bing-speech-service",
-  "version": "2.0.6",
+  "name": "ac-ms-bing-speech-service",
+  "version": "2.1.0",
   "description": "",
   "main": "node.entry.js",
   "module": "dist/MsBingSpeechService.js",
@@ -43,10 +43,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/noopkat/ms-bing-speech-service.git"
+    "url": "git+https://github.com/orgads/ms-bing-speech-service.git"
   },
   "bugs": {
     "url": "https://github.com/noopkat/ms-bing-speech-service/issues"
   },
-  "homepage": "https://github.com/noopkat/ms-bing-speech-service#readme"
+  "homepage": "https://github.com/orgads/ms-bing-speech-service#readme"
 }
