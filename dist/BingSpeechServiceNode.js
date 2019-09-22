@@ -21,16 +21,6 @@ module.exports = function (dependencies) {
   var debug = void 0;
   var globalDebugMode = process && process.env && process.env.DEBUG;
 
-  var receivedTelemetryTemplate = {
-    'turn.start': [],
-    'speech.startDetected': [],
-    'speech.hypothesis': [],
-    'speech.endDetected': [],
-    'speech.phrase': [],
-    'speech.fragment': [],
-    'turn.end': []
-  };
-
   var richPaths = ['turn.start', 'turn.end', 'speech.phrase', 'speech.hypothesis', 'speech.fragment', 'speech.endDetected'];
 
   var defaultOptions = {
@@ -59,9 +49,9 @@ module.exports = function (dependencies) {
       _this.issueTokenUrl = _this.options.issueTokenUrl;
 
       _this.telemetry = {
-        'Metrics': [],
-        'ReceivedMessages': receivedTelemetryTemplate
+        Metrics: []
       };
+      _this._resetTelemetry();
 
       // prepare first request id for the initial turn start
       _this.currentTurnGuid = uuid().replace(/-/g, '');
@@ -71,16 +61,21 @@ module.exports = function (dependencies) {
 
     _createClass(BingSpeechService, [{
       key: '_resetTelemetry',
-      value: function _resetTelemetry(props) {
-        var metrics = Array.isArray(props) && props.indexOf('Metrics') > -1 ? [] : this.telemetry.Metrics;
-        var receivedMessages = Array.isArray(props) && props.indexOf('ReceivedMessages') > -1 ? receivedTelemetryTemplate : this.telemetry.ReceivedMessages;
-
-        this.telemetry.Metrics = metrics;
-        this.telemetry.ReceivedMessages = receivedMessages;
+      value: function _resetTelemetry() {
+        this.telemetry.ReceivedMessages = {
+          'turn.start': [],
+          'speech.startDetected': [],
+          'speech.hypothesis': [],
+          'speech.endDetected': [],
+          'speech.phrase': [],
+          'speech.fragment': [],
+          'turn.end': []
+        };
       }
     }, {
       key: '_sendToSocketServer',
       value: function _sendToSocketServer(item) {
+        if (!this.connection) return;
         if (this.connection.readyState !== 1) throw new Error('could not send: connection to service not open');
         this.connection.send(item);
       }
@@ -108,7 +103,7 @@ module.exports = function (dependencies) {
             // To signal end-of-speech, client applications send an audio chunk message with a zero-length body.
             // Speech Service interprets this message as the end of the incoming audio stream.
             // PER https://docs.microsoft.com/en-us/azure/cognitive-services/speech/api-reference-rest/websocketprotocol#client-end-of-speech-detection
-            _this2.sendChunk('');
+            if (_this2.connection && _this2.connection.readyState === 1) _this2.sendChunk('');
             debug('audio stream end');
             resolve();
           });
@@ -169,7 +164,7 @@ module.exports = function (dependencies) {
           this._sendToSocketServer(telemetryResponse);
 
           // clear the messages telemetry for the next turn
-          this._resetTelemetry(['ReceivedMessages']);
+          this._resetTelemetry();
 
           // rotate currentTurnGuid ready for the next turn
           this.currentTurnGuid = uuid().replace(/-/g, '');
@@ -219,6 +214,10 @@ module.exports = function (dependencies) {
           if (!_this4.connection || !_this4.connection.readyState === 1) return resolve();
           _this4.once('close', resolve);
           _this4.once('error', reject);
+          var telemetryResponse = protocolHelper.createTelemetryPacket(_this4.currentTurnGuid, _this4.telemetry);
+          _this4._sendToSocketServer(telemetryResponse);
+          _this4._resetTelemetry();
+
           debug('closing speech websocket connection');
           _this4.connection.close();
         });
