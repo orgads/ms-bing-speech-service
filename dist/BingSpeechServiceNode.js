@@ -1,29 +1,22 @@
 'use strict';
 
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
-
-function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
-
 module.exports = function (dependencies) {
-  var websocket = dependencies.websocket,
-      uuid = dependencies.uuid,
-      fetch = dependencies.fetch,
-      eventEmitter = dependencies.eventEmitter,
-      protocolHelper = dependencies.protocolHelper,
-      messageParser = dependencies.messageParser,
-      sendFile = dependencies.sendFile;
+  const {
+    websocket,
+    uuid,
+    fetch,
+    eventEmitter,
+    protocolHelper,
+    messageParser,
+    sendFile
+  } = dependencies;
 
+  let debug;
+  const globalDebugMode = process && process.env && process.env.DEBUG;
 
-  var debug = void 0;
-  var globalDebugMode = process && process.env && process.env.DEBUG;
+  const richPaths = ['turn.start', 'turn.end', 'speech.phrase', 'speech.hypothesis', 'speech.fragment', 'speech.endDetected'];
 
-  var richPaths = ['turn.start', 'turn.end', 'speech.phrase', 'speech.hypothesis', 'speech.fragment', 'speech.endDetected'];
-
-  var defaultOptions = {
+  const defaultOptions = {
     format: 'simple',
     language: 'en-US',
     mode: 'conversation',
@@ -31,269 +24,228 @@ module.exports = function (dependencies) {
     accessToken: null
   };
 
-  var BingSpeechService = function (_eventEmitter) {
-    _inherits(BingSpeechService, _eventEmitter);
+  class BingSpeechService extends eventEmitter {
+    constructor(options) {
+      super();
+      this.options = Object.assign({}, defaultOptions, options);
+      debug = this.options.debug || globalDebugMode ? dependencies.debug : function () {};
 
-    function BingSpeechService(options) {
-      _classCallCheck(this, BingSpeechService);
+      const bingServiceUrl = `wss://speech.platform.bing.com/speech/recognition/${this.options.mode}/cognitiveservices/v1?language=${this.options.language}&format=${this.options.format}`;
 
-      var _this = _possibleConstructorReturn(this, (BingSpeechService.__proto__ || Object.getPrototypeOf(BingSpeechService)).call(this));
+      this.customSpeech = !!this.options.serviceUrl;
+      this.serviceUrl = this.options.serviceUrl || bingServiceUrl;
+      this.issueTokenUrl = this.options.issueTokenUrl;
 
-      _this.options = Object.assign({}, defaultOptions, options);
-      debug = _this.options.debug || globalDebugMode ? dependencies.debug : function () {};
-
-      var bingServiceUrl = `wss://speech.platform.bing.com/speech/recognition/${_this.options.mode}/cognitiveservices/v1?language=${_this.options.language}&format=${_this.options.format}`;
-
-      _this.customSpeech = !!_this.options.serviceUrl;
-      _this.serviceUrl = _this.options.serviceUrl || bingServiceUrl;
-      _this.issueTokenUrl = _this.options.issueTokenUrl;
-
-      _this.telemetry = {
+      this.telemetry = {
         Metrics: []
       };
-      _this._resetTelemetry();
+      this._resetTelemetry();
 
       // prepare first request id for the initial turn start
-      _this.currentTurnGuid = uuid().replace(/-/g, '');
+      this.currentTurnGuid = uuid().replace(/-/g, '');
       Object.assign(websocket.prototype, eventEmitter.prototype);
-      return _this;
     }
 
-    _createClass(BingSpeechService, [{
-      key: '_resetTelemetry',
-      value: function _resetTelemetry() {
-        this.telemetry.ReceivedMessages = {
-          'turn.start': [],
-          'speech.startDetected': [],
-          'speech.hypothesis': [],
-          'speech.endDetected': [],
-          'speech.phrase': [],
-          'speech.fragment': [],
-          'turn.end': []
-        };
-      }
-    }, {
-      key: '_sendToSocketServer',
-      value: function _sendToSocketServer(item) {
-        if (!this.connection) return;
-        if (this.connection.readyState !== 1) throw new Error('could not send: connection to service not open');
-        this.connection.send(item);
-      }
-    }, {
-      key: 'sendChunk',
-      value: function sendChunk(chunk) {
-        var data = protocolHelper.createAudioPacket(this.currentTurnGuid, chunk);
-        this._sendToSocketServer(data);
-      }
-    }, {
-      key: 'sendStream',
-      value: function sendStream(inputStream) {
-        var _this2 = this;
+    _resetTelemetry() {
+      this.telemetry.ReceivedMessages = {
+        'turn.start': [],
+        'speech.startDetected': [],
+        'speech.hypothesis': [],
+        'speech.endDetected': [],
+        'speech.phrase': [],
+        'speech.fragment': [],
+        'turn.end': []
+      };
+    }
 
-        return new Promise(function (resolve, reject) {
-          _this2.telemetry.Metrics.push({
-            Start: new Date().toISOString(),
-            Name: 'Microphone',
-            End: ''
-          });
+    _sendToSocketServer(item) {
+      if (!this.connection) return;
+      if (this.connection.readyState !== 1) throw new Error('could not send: connection to service not open');
+      this.connection.send(item);
+    }
 
-          inputStream.on('data', _this2.sendChunk.bind(_this2));
+    sendChunk(chunk) {
+      const data = protocolHelper.createAudioPacket(this.currentTurnGuid, chunk);
+      this._sendToSocketServer(data);
+    }
 
-          inputStream.on('end', function () {
-            // To signal end-of-speech, client applications send an audio chunk message with a zero-length body.
-            // Speech Service interprets this message as the end of the incoming audio stream.
-            // PER https://docs.microsoft.com/en-us/azure/cognitive-services/speech/api-reference-rest/websocketprotocol#client-end-of-speech-detection
-            if (_this2.connection && _this2.connection.readyState === 1) _this2.sendChunk('');
-            debug('audio stream end');
-            resolve();
-          });
+    sendStream(inputStream) {
+      return new Promise((resolve, reject) => {
+        this.telemetry.Metrics.push({
+          Start: new Date().toISOString(),
+          Name: 'Microphone',
+          End: ''
         });
-      }
-    }, {
-      key: '_getAccessToken',
-      value: function _getAccessToken() {
-        if (this.options.accessToken) {
-          debug('access token supplied via options');
-          return Promise.resolve(this.options.accessToken);
-        }
 
-        var postRequest = {
-          method: 'POST',
-          headers: {
-            'Ocp-Apim-Subscription-Key': this.options.subscriptionKey
-          }
-        };
+        inputStream.on('data', this.sendChunk.bind(this));
 
-        debug('requesting access token');
-        // request token
-        return fetch(this.issueTokenUrl, postRequest).then(function (res) {
-          return res.ok ? res.text() : res.json();
+        inputStream.on('end', () => {
+          // To signal end-of-speech, client applications send an audio chunk message with a zero-length body.
+          // Speech Service interprets this message as the end of the incoming audio stream.
+          // PER https://docs.microsoft.com/en-us/azure/cognitive-services/speech/api-reference-rest/websocketprotocol#client-end-of-speech-detection
+          if (this.connection && this.connection.readyState === 1) this.sendChunk('');
+          debug('audio stream end');
+          resolve();
         });
+      });
+    }
+
+    _getAccessToken() {
+      if (this.options.accessToken) {
+        debug('access token supplied via options');
+        return Promise.resolve(this.options.accessToken);
       }
-    }, {
-      key: 'onMessage',
-      value: function onMessage(_ref) {
-        var data = _ref.data;
 
-        var message = messageParser.parse(data);
-        var messagePath = message.path;
-        var body = message.body && richPaths.indexOf(messagePath) > -1 ? JSON.parse(message.body) : {};
-
-        debug(messagePath);
-
-        if (messagePath === 'turn.start') {
-          this.turn.active = true;
+      const postRequest = {
+        method: 'POST',
+        headers: {
+          'Ocp-Apim-Subscription-Key': this.options.subscriptionKey
         }
+      };
 
-        if (messagePath === 'speech.phrase') {
-          this.emit('recognition', body);
-        }
+      debug('requesting access token');
+      // request token
+      return fetch(this.issueTokenUrl, postRequest).then(res => res.ok ? res.text() : res.json());
+    }
 
-        if (messagePath === 'speech.endDetected') {
-          var microphoneMetric = this.telemetry.Metrics.filter(function (m) {
-            return m.Name === 'Microphone';
-          }).pop();
-          if (microphoneMetric) microphoneMetric.End = new Date().toISOString();
-        };
+    onMessage({ data }) {
+      const message = messageParser.parse(data);
+      const messagePath = message.path;
+      const body = message.body && richPaths.indexOf(messagePath) > -1 ? JSON.parse(message.body) : {};
 
-        if (messagePath === 'turn.end') {
-          this.turn.active = false;
+      debug(messagePath);
 
-          // send telemetry metrics to keep websocket open at each turn end
-          var telemetryResponse = protocolHelper.createTelemetryPacket(this.currentTurnGuid, this.telemetry);
-          this._sendToSocketServer(telemetryResponse);
-
-          // clear the messages telemetry for the next turn
-          this._resetTelemetry();
-
-          // rotate currentTurnGuid ready for the next turn
-          this.currentTurnGuid = uuid().replace(/-/g, '');
-        }
-
-        // push the message to telemetry
-        this.telemetry.ReceivedMessages[messagePath].push(new Date().toISOString());
-
-        // emit type of event
-        this.emit(messagePath, body);
-
-        // also emit to the raw data firehose
-        this.emit('data', JSON.stringify(data.utf8Data));
+      if (messagePath === 'turn.start') {
+        this.turn.active = true;
       }
-    }, {
-      key: 'start',
-      value: function start() {
-        var _this3 = this;
 
-        this.connectionGuid = uuid().replace(/-/g, '');
+      if (messagePath === 'speech.phrase') {
+        this.emit('recognition', body);
+      }
 
-        return this._getAccessToken().then(function (accessToken) {
-          // if we got JSON back, it is not a 200 and should contain an error message
-          if (typeof accessToken === 'object') {
-            var errorMessage = accessToken.message || 'no additional details available.';
-            return Promise.reject(`accessToken error: ${errorMessage}`);
-          }
+      if (messagePath === 'speech.endDetected') {
+        const microphoneMetric = this.telemetry.Metrics.filter(m => m.Name === 'Microphone').pop();
+        if (microphoneMetric) microphoneMetric.End = new Date().toISOString();
+      };
 
-          debug('access token request successful: ' + accessToken);
+      if (messagePath === 'turn.end') {
+        this.turn.active = false;
 
-          _this3.telemetry.Metrics.push({
-            Name: 'Connection',
-            Id: _this3.connectionGuid,
-            Start: new Date().toISOString(),
-            End: ''
-          });
+        // send telemetry metrics to keep websocket open at each turn end
+        const telemetryResponse = protocolHelper.createTelemetryPacket(this.currentTurnGuid, this.telemetry);
+        this._sendToSocketServer(telemetryResponse);
 
-          return _this3._connectToWebsocket(accessToken);
+        // clear the messages telemetry for the next turn
+        this._resetTelemetry();
+
+        // rotate currentTurnGuid ready for the next turn
+        this.currentTurnGuid = uuid().replace(/-/g, '');
+      }
+
+      // push the message to telemetry
+      this.telemetry.ReceivedMessages[messagePath].push(new Date().toISOString());
+
+      // emit type of event
+      this.emit(messagePath, body);
+
+      // also emit to the raw data firehose
+      this.emit('data', JSON.stringify(data.utf8Data));
+    }
+
+    start() {
+      this.connectionGuid = uuid().replace(/-/g, '');
+
+      return this._getAccessToken().then(accessToken => {
+        // if we got JSON back, it is not a 200 and should contain an error message
+        if (typeof accessToken === 'object') return Promise.reject(`accessToken error: ${JSON.stringify(accessToken, null, 2)}`);
+
+        debug('access token request successful: ' + accessToken);
+
+        this.telemetry.Metrics.push({
+          Name: 'Connection',
+          Id: this.connectionGuid,
+          Start: new Date().toISOString(),
+          End: ''
         });
+
+        return this._connectToWebsocket(accessToken);
+      });
+    }
+
+    stop() {
+      return new Promise((resolve, reject) => {
+        if (!this.connection || !this.connection.readyState === 1) return resolve();
+        this.once('close', resolve);
+        this.once('error', reject);
+        const telemetryResponse = protocolHelper.createTelemetryPacket(this.currentTurnGuid, this.telemetry);
+        this._sendToSocketServer(telemetryResponse);
+        this._resetTelemetry();
+
+        debug('closing speech websocket connection');
+        this.connection.close();
+      });
+    }
+
+    _connectToWebsocket(accessToken) {
+      debug('opening websocket at:', this.serviceUrl);
+
+      const headerParams = {
+        'Authorization': `Bearer ${accessToken}`,
+        'X-ConnectionId': this.connectionGuid
+      };
+
+      let authorizedServiceUrl = '';
+
+      if (this.customSpeech) {
+        authorizedServiceUrl = this.serviceUrl;
+      } else {
+        const headerParamsQueries = Object.keys(headerParams).map(header => `&${header.replace('-', '')}=${headerParams[header]}`);
+        authorizedServiceUrl = `${this.serviceUrl}${encodeURI(headerParamsQueries.join(''))}`;
       }
-    }, {
-      key: 'stop',
-      value: function stop() {
-        var _this4 = this;
 
-        return new Promise(function (resolve, reject) {
-          if (!_this4.connection || !_this4.connection.readyState === 1) return resolve();
-          _this4.once('close', resolve);
-          _this4.once('error', reject);
-          var telemetryResponse = protocolHelper.createTelemetryPacket(_this4.currentTurnGuid, _this4.telemetry);
-          _this4._sendToSocketServer(telemetryResponse);
-          _this4._resetTelemetry();
+      const client = new websocket(authorizedServiceUrl, null, null, headerParams);
 
-          debug('closing speech websocket connection');
-          _this4.connection.close();
-        });
-      }
-    }, {
-      key: '_connectToWebsocket',
-      value: function _connectToWebsocket(accessToken) {
-        debug('opening websocket at:', this.serviceUrl);
+      return this._setUpClientEvents(client);
+    }
 
-        var headerParams = {
-          'Authorization': `Bearer ${accessToken}`,
-          'X-ConnectionId': this.connectionGuid
+    _setUpClientEvents(client) {
+      return new Promise((resolve, reject) => {
+        client.onmessage = this.onMessage.bind(this);
+
+        client.onerror = error => {
+          this.emit('error', error);
+          debug('socket error:', error);
         };
 
-        var authorizedServiceUrl = '';
+        client.onclose = error => {
+          debug('socket close:', error);
+          this.emit('close', error);
+          if (error && error.code !== 1000) reject(error);
+        };
 
-        if (this.customSpeech) {
-          authorizedServiceUrl = this.serviceUrl;
-        } else {
-          var headerParamsQueries = Object.keys(headerParams).map(function (header) {
-            return `&${header.replace('-', '')}=${headerParams[header]}`;
-          });
-          authorizedServiceUrl = `${this.serviceUrl}${encodeURI(headerParamsQueries.join(''))}`;
-        }
+        client.onopen = event => {
+          debug('connected to websocket');
 
-        var client = new websocket(authorizedServiceUrl, null, null, headerParams);
-
-        return this._setUpClientEvents(client);
-      }
-    }, {
-      key: '_setUpClientEvents',
-      value: function _setUpClientEvents(client) {
-        var _this5 = this;
-
-        return new Promise(function (resolve, reject) {
-          client.onmessage = _this5.onMessage.bind(_this5);
-
-          client.onerror = function (error) {
-            _this5.emit('error', error);
-            debug('socket error:', error);
+          this.connection = client;
+          this.sendFile = sendFile.bind(this);
+          this.turn = {
+            active: false
           };
 
-          client.onclose = function (error) {
-            debug('socket close:', error);
-            _this5.emit('close', error);
-            if (error && error.code !== 1000) reject(error);
-          };
+          // update connection metric to when the metric ended
+          this.telemetry.Metrics[0].End = new Date().toISOString();
 
-          client.onopen = function (event) {
-            debug('connected to websocket');
+          debug('sending config packet');
 
-            _this5.connection = client;
-            _this5.sendFile = sendFile.bind(_this5);
-            _this5.turn = {
-              active: false
-            };
+          const initialisationPayload = protocolHelper.createSpeechConfigPacket(this.connectionGuid);
+          this._sendToSocketServer(initialisationPayload);
 
-            // update connection metric to when the metric ended
-            _this5.telemetry.Metrics[0].End = new Date().toISOString();
-
-            debug('sending config packet');
-
-            var initialisationPayload = protocolHelper.createSpeechConfigPacket(_this5.connectionGuid);
-            _this5._sendToSocketServer(initialisationPayload);
-
-            _this5.emit('connect');
-            resolve();
-          };
-        });
-      }
-    }]);
-
-    return BingSpeechService;
-  }(eventEmitter);
-
-  ;
+          this.emit('connect');
+          resolve();
+        };
+      });
+    }
+  };
 
   return BingSpeechService;
 };
