@@ -159,10 +159,8 @@ module.exports = function (dependencies) {
       return this._getAccessToken()
         .then((accessToken) => {
           // if we got JSON back, it is not a 200 and should contain an error message
-          if (typeof accessToken === 'object') {
-            const errorMessage = accessToken.message || 'no additional details available.';
-            return Promise.reject(`accessToken error: ${errorMessage}`);
-          }
+          if (typeof accessToken === 'object')
+            return Promise.reject(`accessToken error: ${JSON.stringify(accessToken, null, 2)}`);
 
           debug('access token request successful: ' + accessToken);
 
